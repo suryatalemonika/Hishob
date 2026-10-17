@@ -22,9 +22,9 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: ''
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager --install "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
