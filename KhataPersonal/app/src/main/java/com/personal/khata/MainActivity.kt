@@ -21,8 +21,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private data class Person(val id: Long, val name: String, val phone: String, val balance: Long)
-private data class Entry(val date: String, val kind: String, val amount: Long, val note: String)
+
+data class Person(val id: Long, val name: String, val phone: String, val balance: Long)
+data class Entry(val date: String, val kind: String, val amount: Long, val note: String)
 
 class KhataDb(context: android.content.Context) : SQLiteOpenHelper(context, "personal_khata.db", null, 1) {
     override fun onCreate(db: SQLiteDatabase) {
