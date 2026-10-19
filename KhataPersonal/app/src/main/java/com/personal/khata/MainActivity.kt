@@ -1023,8 +1023,16 @@ class MainActivity : ComponentActivity() {
 
             var y = 226f
             var runningBalance = 0L
+            val chronologicalEntries = entries.sortedBy { entry ->
+                runCatching {
+                    SimpleDateFormat(
+                        "dd MMM yyyy, hh:mm a",
+                        Locale.getDefault()
+                    ).parse(entry.date)?.time ?: 0L
+                }.getOrDefault(0L)
+            }
 
-            entries.reversed().forEach { e ->
+            chronologicalEntries.forEach { e ->
                 if (y > 805f) {
                     doc.finishPage(page)
                     pageNum++
@@ -1073,7 +1081,7 @@ class MainActivity : ComponentActivity() {
             }
 
             // Append a final all-entries calculation to the end of the statement.
-            if (y > 720f) {
+            if (y > 620f) {
                 doc.finishPage(page)
                 pageNum++
                 page = doc.startPage(
