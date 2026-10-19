@@ -931,253 +931,238 @@ class MainActivity : ComponentActivity() {
         try {
             doc = PdfDocument()
 
-            val totalGave = entries
-                .filter { it.kind == "DEBIT" }
-                .sumOf { it.amount }
+            val totalGave = entries.filter { it.kind == "DEBIT" }.sumOf { it.amount }
+            val totalGot = entries.filter { it.kind == "CREDIT" }.sumOf { it.amount }
 
-            val totalGot = entries
-                .filter { it.kind == "CREDIT" }
-                .sumOf { it.amount }
+            // A4-like canvas in PDF points.
+            val pageWidth = 595
+            val pageHeight = 842
+            val navy = Color.rgb(20, 39, 55)
+            val emerald = Color.rgb(22, 131, 74)
+            val paleGreen = Color.rgb(231, 246, 237)
+            val paleRed = Color.rgb(253, 235, 234)
+            val paleBlue = Color.rgb(231, 240, 250)
+            val ink = Color.rgb(38, 52, 64)
+            val mutedInk = Color.rgb(105, 119, 129)
+            val lineColor = Color.rgb(224, 231, 235)
+            val white = Color.WHITE
+            val redInk = Color.rgb(181, 49, 54)
+            val blueInk = Color.rgb(43, 91, 150)
 
             var pageNum = 1
-            var page = doc.startPage(
-                PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
-            )
+            var page = doc.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNum).create())
             var canvas = page.canvas
 
-            val paint = Paint().apply {
-                color = dark
-                textSize = 14f
-                isAntiAlias = true
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+            fun fill(color: Int) {
+                paint.color = color
+                paint.style = Paint.Style.FILL
             }
 
-            fun drawHeading(y: Float) {
-                paint.textSize = 20f
-                paint.typeface = Typeface.DEFAULT_BOLD
-                canvas.drawText("Hishob - Statement", 30f, y, paint)
-                paint.typeface = Typeface.DEFAULT
+            fun drawText(
+                value: String,
+                x: Float,
+                y: Float,
+                size: Float = 10f,
+                color: Int = ink,
+                bold: Boolean = false
+            ) {
+                fill(color)
+                paint.textSize = size
+                paint.typeface = if (bold) Typeface.create("sans-serif", Typeface.BOLD)
+                    else Typeface.create("sans-serif", Typeface.NORMAL)
+                canvas.drawText(value, x, y, paint)
             }
 
-            fun drawSummary() {
-                paint.textSize = 12f
+            fun roundedRect(
+                left: Float,
+                top: Float,
+                right: Float,
+                bottom: Float,
+                radius: Float,
+                color: Int
+            ) {
+                fill(color)
+                canvas.drawRoundRect(left, top, right, bottom, radius, radius, paint)
+            }
 
-                canvas.drawText("Name: ${p.name}", 30f, 80f, paint)
+            fun line(x1: Float, y1: Float, x2: Float, y2: Float, color: Int = lineColor) {
+                paint.color = color
+                paint.strokeWidth = 1f
+                paint.style = Paint.Style.STROKE
+                canvas.drawLine(x1, y1, x2, y2, paint)
+                paint.style = Paint.Style.FILL
+            }
 
-                canvas.drawText(
-                    "Phone: ${p.phone.ifBlank { "Not provided" }}",
-                    30f,
-                    102f,
-                    paint
+            fun drawBrandHeader(continued: Boolean = false) {
+                roundedRect(0f, 0f, pageWidth.toFloat(), 104f, 0f, navy)
+                roundedRect(0f, 96f, pageWidth.toFloat(), 104f, 0f, emerald)
+                drawText("HISHOB", 30f, 43f, 23f, white, true)
+                drawText(
+                    if (continued) "PERSONAL KHATA  •  CONTINUED" else "PERSONAL KHATA STATEMENT",
+                    31f, 65f, 9f, Color.rgb(197, 220, 211), true
                 )
+                roundedRect(496f, 26f, 565f, 61f, 10f, Color.rgb(35, 61, 76))
+                drawText("REPORT", 510f, 47f, 9f, white, true)
+            }
 
-                canvas.drawText(
-                    "Generated: ${
-                        SimpleDateFormat(
-                            "dd MMM yyyy, hh:mm a",
-                            Locale.getDefault()
-                        ).format(Date())
-                    }",
-                    30f,
-                    124f,
-                    paint
-                )
+            fun drawFooter() {
+                line(30f, 812f, 565f, 812f)
+                drawText("Hishob • Personal account statement", 30f, 829f, 8f, mutedInk)
+                drawText("Page " + pageNum, 520f, 829f, 8f, mutedInk)
+            }
 
-                canvas.drawText(
-                    "Total You Gave: ${money(totalGave)}",
-                    30f,
-                    151f,
-                    paint
-                )
+            fun finishCurrentPage() {
+                drawFooter()
+                doc!!.finishPage(page)
+            }
 
-                canvas.drawText(
-                    "Total You Got: ${money(totalGot)}",
-                    300f,
-                    151f,
-                    paint
-                )
+            fun newPage(continued: Boolean = true) {
+                finishCurrentPage()
+                pageNum++
+                page = doc!!.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNum).create())
+                canvas = page.canvas
+                drawBrandHeader(continued)
+            }
 
-                canvas.drawText(
-                    "Balance: ${balanceLabel(p)}",
-                    30f,
-                    174f,
-                    paint
-                )
+            fun drawSummaryCard(
+                left: Float,
+                top: Float,
+                right: Float,
+                title: String,
+                amount: String,
+                subtitle: String,
+                background: Int,
+                accent: Int
+            ) {
+                roundedRect(left, top, right, top + 79f, 12f, background)
+                roundedRect(left, top, left + 5f, top + 79f, 3f, accent)
+                drawText(title, left + 15f, top + 22f, 9f, accent, true)
+                drawText(amount, left + 15f, top + 47f, 15f, ink, true)
+                drawText(subtitle, left + 15f, top + 65f, 7.5f, mutedInk)
             }
 
             fun drawTableHeader(y: Float) {
-                paint.textSize = 10f
-                paint.typeface = Typeface.DEFAULT_BOLD
-
-                canvas.drawText("DATE", 25f, y, paint)
-                canvas.drawText("TYPE", 155f, y, paint)
-                canvas.drawText("AMOUNT", 250f, y, paint)
-                canvas.drawText("BALANCE", 345f, y, paint)
-                canvas.drawText("NOTE", 455f, y, paint)
-
-                paint.typeface = Typeface.DEFAULT
+                roundedRect(30f, y - 19f, 565f, y + 7f, 5f, navy)
+                drawText("DATE", 39f, y - 2f, 8f, white, true)
+                drawText("TYPE", 157f, y - 2f, 8f, white, true)
+                drawText("AMOUNT", 253f, y - 2f, 8f, white, true)
+                drawText("BALANCE", 354f, y - 2f, 8f, white, true)
+                drawText("NOTE", 458f, y - 2f, 8f, white, true)
             }
 
-            drawHeading(48f)
-            drawSummary()
-            drawTableHeader(205f)
+            drawBrandHeader()
+            drawText("Account overview", 30f, 132f, 14f, navy, true)
+            drawText("Name", 30f, 154f, 8f, mutedInk, true)
+            drawText(p.name.take(36), 30f, 170f, 11f, ink, true)
+            drawText("Phone", 250f, 154f, 8f, mutedInk, true)
+            drawText(p.phone.ifBlank { "Not provided" }.take(25), 250f, 170f, 10f, ink, true)
+            drawText(
+                "Generated " + SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date()),
+                30f, 190f, 8f, mutedInk
+            )
 
-            var y = 226f
+            drawSummaryCard(30f, 207f, 202f, "YOU GOT", money(totalGot), "Total received", paleGreen, emerald)
+            drawSummaryCard(211f, 207f, 383f, "YOU GAVE", money(totalGave), "Total paid / given", paleRed, redInk)
+            drawSummaryCard(392f, 207f, 565f, "CURRENT BALANCE", balanceLabel(p).take(20), "As per this account", paleBlue, blueInk)
+
+            drawText("TRANSACTION HISTORY", 30f, 316f, 12f, navy, true)
+            drawText(entries.size.toString() + " entries • oldest to newest", 30f, 332f, 8f, mutedInk)
+            drawTableHeader(361f)
+
+            var y = 386f
             var runningBalance = 0L
             val chronologicalEntries = entries.sortedBy { entry ->
                 runCatching {
-                    SimpleDateFormat(
-                        "dd MMM yyyy, hh:mm a",
-                        Locale.getDefault()
-                    ).parse(entry.date)?.time ?: 0L
+                    SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+                        .parse(entry.date)?.time ?: 0L
                 }.getOrDefault(0L)
             }
 
-            chronologicalEntries.forEach { e ->
-                if (y > 805f) {
-                    doc.finishPage(page)
-                    pageNum++
-
-                    page = doc.startPage(
-                        PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
-                    )
-                    canvas = page.canvas
-
-                    drawHeading(48f)
-
-                    paint.textSize = 12f
-                    canvas.drawText(
-                        "${p.name} - Statement (continued)",
-                        30f,
-                        75f,
-                        paint
-                    )
-
-                    drawTableHeader(100f)
-                    y = 122f
+            chronologicalEntries.forEachIndexed { index, e ->
+                if (y > 785f) {
+                    newPage()
+                    drawText("TRANSACTION HISTORY (CONTINUED)", 30f, 132f, 12f, navy, true)
+                    drawTableHeader(161f)
+                    y = 186f
                 }
 
-                runningBalance += if (e.kind == "DEBIT") {
-                    e.amount
-                } else {
-                    -e.amount
+                runningBalance += if (e.kind == "DEBIT") e.amount else -e.amount
+                val isGave = e.kind == "DEBIT"
+                val rowTop = y - 15f
+                val rowBottom = y + 9f
+
+                if (index % 2 == 0) {
+                    roundedRect(30f, rowTop, 565f, rowBottom, 4f, Color.rgb(247, 249, 250))
                 }
-
-                paint.textSize = 9f
-
-                canvas.drawText(e.date.take(22), 25f, y, paint)
-
-                canvas.drawText(
-                    if (e.kind == "DEBIT") "You Gave" else "You Got",
-                    155f,
-                    y,
-                    paint
-                )
-
-                canvas.drawText(money(e.amount), 250f, y, paint)
-                canvas.drawText(money(runningBalance), 345f, y, paint)
-                canvas.drawText(e.note.take(18), 455f, y, paint)
-
-                y += 22f
+                drawText(e.date.take(17), 39f, y, 7.5f, ink)
+                drawText(if (isGave) "YOU GAVE" else "YOU GOT", 157f, y, 7.5f, if (isGave) redInk else emerald, true)
+                drawText(money(e.amount), 253f, y, 7.5f, if (isGave) redInk else emerald, true)
+                drawText(money(runningBalance), 354f, y, 7.5f, ink)
+                drawText(e.note.ifBlank { "—" }.take(18), 458f, y, 7.5f, mutedInk)
+                y += 25f
             }
 
-            // Append a final all-entries calculation to the end of the statement.
-            if (y > 620f) {
-                doc.finishPage(page)
-                pageNum++
-                page = doc.startPage(
-                    PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
-                )
-                canvas = page.canvas
-                drawHeading(48f)
-                paint.textSize = 12f
-                canvas.drawText(
-                    "${p.name} - Statement summary",
-                    30f,
-                    75f,
-                    paint
-                )
-                y = 112f
+            // Give the final calculation its own clean section, moving to a fresh page if needed.
+            if (y > 600f) {
+                newPage()
+                y = 145f
             } else {
-                y += 18f
+                y += 23f
             }
 
-            paint.color = dark
-            paint.strokeWidth = 1.2f
-            canvas.drawLine(30f, y, 565f, y, paint)
-            y += 25f
+            roundedRect(30f, y - 20f, 565f, y + 12f, 7f, navy)
+            drawText("FINAL CALCULATION", 43f, y + 1f, 11f, white, true)
+            y += 33f
 
-            paint.textSize = 15f
-            paint.typeface = Typeface.DEFAULT_BOLD
-            canvas.drawText("FINAL CALCULATION - ALL ENTRIES", 30f, y, paint)
-            paint.typeface = Typeface.DEFAULT
-            y += 26f
+            roundedRect(30f, y - 12f, 565f, y + 103f, 10f, Color.rgb(246, 249, 248))
+            drawText("Total number of entries", 46f, y + 10f, 9f, mutedInk)
+            drawText(entries.size.toString(), 420f, y + 10f, 10f, ink, true)
+            line(46f, y + 21f, 549f, y + 21f)
+            drawText("Total You Got", 46f, y + 40f, 9f, mutedInk)
+            drawText(money(totalGot), 420f, y + 40f, 10f, emerald, true)
+            line(46f, y + 51f, 549f, y + 51f)
+            drawText("Total You Gave", 46f, y + 70f, 9f, mutedInk)
+            drawText(money(totalGave), 420f, y + 70f, 10f, redInk, true)
+            line(46f, y + 81f, 549f, y + 81f)
+            drawText("Net (You Gave − You Got)", 46f, y + 99f, 9f, ink, true)
+            drawText(money(totalGave - totalGot), 420f, y + 99f, 10f, navy, true)
+            y += 130f
 
-            paint.textSize = 12f
-            canvas.drawText("Total entries: ${entries.size}", 30f, y, paint)
-            y += 22f
-            canvas.drawText("Total You Gave: ${money(totalGave)}", 30f, y, paint)
-            y += 22f
-            canvas.drawText("Total You Got: ${money(totalGot)}", 30f, y, paint)
-            y += 22f
-            canvas.drawText("Net balance (Gave - Got): ${money(totalGave - totalGot)}", 30f, y, paint)
-            y += 22f
-            canvas.drawText("Current account status: ${balanceLabel(p)}", 30f, y, paint)
+            roundedRect(30f, y - 12f, 565f, y + 39f, 9f, paleGreen)
+            drawText("CURRENT ACCOUNT STATUS", 45f, y + 8f, 8f, emerald, true)
+            drawText(balanceLabel(p).take(58), 45f, y + 27f, 12f, navy, true)
 
-            doc.finishPage(page)
+            finishCurrentPage()
 
-            val safeName = p.name
-                .replace(Regex("[^A-Za-z0-9_-]"), "_")
-                .ifBlank { "person" }
-
+            val safeName = p.name.replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "person" }
             val file = if (download) {
-                File(
-                    getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                    "Khata_${safeName}.pdf"
-                )
+                File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "Khata_" + safeName + ".pdf")
             } else {
-                File(cacheDir, "Khata_${safeName}.pdf")
+                File(cacheDir, "Khata_" + safeName + ".pdf")
             }
 
             file.parentFile?.mkdirs()
-
-            FileOutputStream(file).use {
-                doc.writeTo(it)
-            }
-
+            FileOutputStream(file).use { doc.writeTo(it) }
             doc.close()
             doc = null
 
             if (download) {
-                toast("PDF saved: Documents/${file.name}")
+                toast("PDF saved: Documents/" + file.name)
             } else {
-                val uri = FileProvider.getUriForFile(
-                    this,
-                    "$packageName.fileprovider",
-                    file
-                )
-
+                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(
-                        Intent.EXTRA_SUBJECT,
-                        "Khata statement - ${p.name}"
-                    )
+                    putExtra(Intent.EXTRA_SUBJECT, "Khata statement - " + p.name)
                     clipData = ClipData.newRawUri("", uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-
-                startActivity(
-                    Intent.createChooser(
-                        intent,
-                        "Share ${p.name}'s statement"
-                    )
-                )
+                startActivity(Intent.createChooser(intent, "Share " + p.name + "'s statement"))
             }
         } catch (e: Exception) {
-            toast(
-                "Could not create PDF: ${e.localizedMessage ?: "unknown error"}"
-            )
+            toast("Could not create PDF: " + (e.localizedMessage ?: "unknown error"))
         } finally {
             doc?.close()
         }
