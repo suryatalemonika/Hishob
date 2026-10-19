@@ -2,6 +2,7 @@
 package com.personal.khata
 
 import android.app.AlertDialog
+import android.app.DatePickerDialog
 import android.content.ClipData
 import android.content.ContentValues
 import android.content.Intent
@@ -29,6 +30,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
@@ -109,22 +111,35 @@ class KhataDb(context: android.content.Context) :
         writableDatabase.insert("people", null, values)
     }
 
-    fun addEntry(id: Long, kind: String, amount: Long, note: String) {
+    fun addEntry(
+        id: Long,
+        kind: String,
+        amount: Long,
+        note: String,
+        entryDateMillis: Long
+    ): Boolean {
+        val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US)
+        val selectedDay = dateFormat.format(Date(entryDateMillis))
+        val today = dateFormat.format(Date())
+        if (selectedDay > today) return false
+
+        val dateText = SimpleDateFormat(
+            "dd MMM yyyy",
+            Locale.getDefault()
+        ).format(Date(entryDateMillis)) + SimpleDateFormat(
+            ", hh:mm a",
+            Locale.getDefault()
+        ).format(Date())
+
         val values = ContentValues().apply {
             put("person_id", id)
-            put(
-                "date",
-                SimpleDateFormat(
-                    "dd MMM yyyy, hh:mm a",
-                    Locale.getDefault()
-                ).format(Date())
-            )
+            put("date", dateText)
             put("kind", kind)
             put("amount", amount)
             put("note", note)
         }
 
-        writableDatabase.insert("entries", null, values)
+        return writableDatabase.insert("entries", null, values) != -1L
     }
 
     fun entries(personId: Long): List<Entry> {
@@ -787,6 +802,46 @@ class MainActivity : ComponentActivity() {
             hint = "Note (optional)"
         }
 
+        var selectedDateMillis = Calendar.getInstance().timeInMillis
+        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        val dateButton = Button(this).apply {
+            text = "Entry date: ${dateFormat.format(Date(selectedDateMillis))}"
+            isAllCaps = false
+            setOnClickListener {
+                val initial = Calendar.getInstance().apply {
+                    timeInMillis = selectedDateMillis
+                }
+                val picker = DatePickerDialog(
+                    this@MainActivity,
+                    { _, year, month, dayOfMonth ->
+                        val chosen = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                            set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                            set(Calendar.HOUR_OF_DAY, 12)
+                            set(Calendar.MINUTE, 0)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        selectedDateMillis = chosen.timeInMillis
+                        text = "Entry date: ${dateFormat.format(Date(selectedDateMillis))}"
+                    },
+                    initial.get(Calendar.YEAR),
+                    initial.get(Calendar.MONTH),
+                    initial.get(Calendar.DAY_OF_MONTH)
+                )
+                val maxDate = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                picker.datePicker.maxDate = maxDate.timeInMillis
+                picker.show()
+            }
+        }
+
+        box.addView(dateButton)
         box.addView(amount)
         box.addView(note)
 
@@ -807,13 +862,18 @@ class MainActivity : ComponentActivity() {
                 ) {
                     toast("Enter a valid amount")
                 } else {
-                    db.addEntry(
+                    val saved = db.addEntry(
                         id,
                         kind,
                         (value * 100).toLong(),
-                        note.text.toString().trim()
+                        note.text.toString().trim(),
+                        selectedDateMillis
                     )
-                    showPerson(id)
+                    if (saved) {
+                        showPerson(id)
+                    } else {
+                        toast("Future dates are not allowed")
+                    }
                 }
             }
             .show()
@@ -1011,6 +1071,49 @@ class MainActivity : ComponentActivity() {
 
                 y += 22f
             }
+
+            // Append a final all-entries calculation to the end of the statement.
+            if (y > 720f) {
+                doc.finishPage(page)
+                pageNum++
+                page = doc.startPage(
+                    PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+                )
+                canvas = page.canvas
+                drawHeading(48f)
+                paint.textSize = 12f
+                canvas.drawText(
+                    "${p.name} - Statement summary",
+                    30f,
+                    75f,
+                    paint
+                )
+                y = 112f
+            } else {
+                y += 18f
+            }
+
+            paint.color = dark
+            paint.strokeWidth = 1.2f
+            canvas.drawLine(30f, y, 565f, y, paint)
+            y += 25f
+
+            paint.textSize = 15f
+            paint.typeface = Typeface.DEFAULT_BOLD
+            canvas.drawText("FINAL CALCULATION - ALL ENTRIES", 30f, y, paint)
+            paint.typeface = Typeface.DEFAULT
+            y += 26f
+
+            paint.textSize = 12f
+            canvas.drawText("Total entries: ${entries.size}", 30f, y, paint)
+            y += 22f
+            canvas.drawText("Total You Gave: ${money(totalGave)}", 30f, y, paint)
+            y += 22f
+            canvas.drawText("Total You Got: ${money(totalGot)}", 30f, y, paint)
+            y += 22f
+            canvas.drawText("Net balance (Gave - Got): ${money(totalGave - totalGot)}", 30f, y, paint)
+            y += 22f
+            canvas.drawText("Current account status: ${balanceLabel(p)}", 30f, y, paint)
 
             doc.finishPage(page)
 
